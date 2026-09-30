@@ -1,0 +1,881 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>本地双人 12×12 格点回放器</title>
+  <style>
+    :root {
+      --bg: #0e1320;
+      --panel: #171e2e;
+      --panel-2: #1d2740;
+      --line: #2a3753;
+      --text: #e9eefb;
+      --muted: #94a3b8;
+      --accent: #5eead4;
+      --accent-2: #93c5fd;
+      --a: #f87171;
+      --b: #60a5fa;
+      --pickup: #fbbf24;
+      --danger: #fb7185;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--text);
+      background: radial-gradient(circle at top left, #172033, var(--bg) 55%);
+      font: 14px/1.5 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    header {
+      padding: 22px 24px 14px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    h1 {
+      margin: 0 0 4px;
+      font-size: 22px;
+      letter-spacing: .02em;
+    }
+
+    header p { margin: 0; color: var(--muted); }
+
+    main {
+      display: grid;
+      grid-template-columns: minmax(560px, 1fr) 430px;
+      gap: 18px;
+      padding: 18px 24px 28px;
+      max-width: 1440px;
+      margin: 0 auto;
+    }
+
+    .panel {
+      background: color-mix(in srgb, var(--panel) 92%, transparent);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 16px;
+      box-shadow: 0 12px 32px rgba(0,0,0,.18);
+    }
+
+    .panel + .panel { margin-top: 16px; }
+
+    h2 {
+      margin: 0 0 12px;
+      font-size: 15px;
+      color: var(--accent);
+    }
+
+    .scoreboard {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+
+    .score {
+      padding: 12px;
+      border-radius: 10px;
+      background: var(--panel-2);
+      border: 1px solid var(--line);
+    }
+
+    .score strong {
+      display: block;
+      font-size: 24px;
+      line-height: 1.1;
+    }
+
+    .score.a strong { color: var(--a); }
+    .score.b strong { color: var(--b); }
+
+    .score span { color: var(--muted); font-size: 12px; }
+
+    .board-wrap {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 14px;
+      align-items: start;
+    }
+
+    .board {
+      --cell: min(5.4vw, 56px);
+      display: grid;
+      grid-template-columns: repeat(12, var(--cell));
+      grid-template-rows: repeat(12, var(--cell));
+      width: max-content;
+      border: 2px solid #435170;
+      border-radius: 8px;
+      overflow: hidden;
+      background: #101827;
+    }
+
+    .cell {
+      position: relative;
+      border-right: 1px solid #25314b;
+      border-bottom: 1px solid #25314b;
+    }
+
+    .cell:nth-child(12n) { border-right: 0; }
+    .cell:nth-last-child(-n+12) { border-bottom: 0; }
+
+    .cell.checkpoint-cell {
+      background: rgba(94, 234, 212, .035);
+    }
+
+    .cell .coordinate {
+      position: absolute;
+      right: 2px;
+      bottom: 1px;
+      font-size: 8px;
+      color: rgba(148, 163, 184, .35);
+      pointer-events: none;
+    }
+
+    .pickup-marker {
+      position: absolute;
+      inset: 22%;
+      border-radius: 50%;
+      background: radial-gradient(circle, #fde68a, var(--pickup));
+      box-shadow: 0 0 12px rgba(251,191,36,.5);
+    }
+
+    .pickup-points {
+      position: absolute;
+      top: -6px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 9px;
+      color: #1f2937;
+      font-weight: 800;
+    }
+
+    .actor {
+      position: absolute;
+      inset: 8%;
+      border-radius: 34% 66% 50% 50%;
+      display: grid;
+      place-items: center;
+      font-weight: 900;
+      color: #08111f;
+      z-index: 2;
+      box-shadow: 0 4px 14px rgba(0,0,0,.4);
+    }
+
+    .actor.a { background: var(--a); }
+    .actor.b { background: var(--b); }
+
+    .intention {
+      position: absolute;
+      inset: 31%;
+      border: 2px dashed;
+      border-radius: 50%;
+      opacity: .42;
+      z-index: 1;
+    }
+    .intention.a { border-color: var(--a); }
+    .intention.b { border-color: var(--b); }
+
+    .legend {
+      display: grid;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 12px;
+      min-width: 130px;
+    }
+
+    .legend-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .dot {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      display: inline-block;
+      flex: 0 0 auto;
+    }
+    .dot.a { background: var(--a); }
+    .dot.b { background: var(--b); }
+    .dot.pickup { background: var(--pickup); }
+    .dot.checkpoint { background: var(--accent); opacity: .35; }
+
+    .state-box {
+      margin-top: 14px;
+      padding: 12px;
+      background: var(--panel-2);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px 14px;
+    }
+
+    .state-box .wide { grid-column: 1 / -1; }
+    .state-label { color: var(--muted); font-size: 12px; }
+    .mono, textarea, input, select {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+
+    .events {
+      margin: 0;
+      padding-left: 18px;
+      max-height: 82px;
+      overflow: auto;
+    }
+
+    .ok { color: var(--accent); }
+    .warn { color: var(--danger); }
+    .muted { color: var(--muted); }
+
+    .transport {
+      margin-top: 14px;
+      display: grid;
+      gap: 10px;
+    }
+
+    .timeline-row {
+      display: grid;
+      grid-template-columns: 64px 1fr 64px;
+      gap: 10px;
+      align-items: center;
+    }
+
+    input[type="range"] { width: 100%; accent-color: var(--accent); }
+
+    .buttons {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    button {
+      color: var(--text);
+      background: #263450;
+      border: 1px solid #3b4a6c;
+      border-radius: 8px;
+      padding: 7px 11px;
+      cursor: pointer;
+      font-weight: 650;
+    }
+
+    button:hover:not(:disabled) {
+      background: #31415f;
+      border-color: var(--accent-2);
+    }
+
+    button:disabled {
+      opacity: .45;
+      cursor: not-allowed;
+    }
+
+    button.primary {
+      background: #0f766e;
+      border-color: #14b8a6;
+    }
+
+    button.primary:hover:not(:disabled) { background: #115e59; }
+
+    textarea {
+      width: 100%;
+      min-height: 310px;
+      resize: vertical;
+      color: var(--text);
+      background: #0b1220;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 10px;
+      outline: none;
+      tab-size: 2;
+    }
+
+    textarea:focus, input:focus, select:focus {
+      border-color: var(--accent-2);
+      box-shadow: 0 0 0 2px rgba(147,197,253,.15);
+    }
+
+    .editor-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 10px 0;
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+      align-items: end;
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid var(--line);
+    }
+
+    label.field {
+      display: grid;
+      gap: 4px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    input, select {
+      width: 100%;
+      color: var(--text);
+      background: #0b1220;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      padding: 7px 8px;
+    }
+
+    .explain {
+      color: var(--muted);
+      font-size: 12px;
+      margin: 10px 0 0;
+    }
+
+    .explain code, pre code {
+      color: var(--accent);
+      background: rgba(94,234,212,.08);
+      padding: 1px 4px;
+      border-radius: 4px;
+    }
+
+    .status-line {
+      margin-top: 10px;
+      padding: 8px 10px;
+      border-radius: 8px;
+      background: #0b1220;
+      border: 1px solid var(--line);
+      min-height: 34px;
+      color: var(--muted);
+      overflow-wrap: anywhere;
+    }
+
+    @media (max-width: 1050px) {
+      main { grid-template-columns: 1fr; }
+      .board { --cell: min(7.5vw, 52px); }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>完全本地运行的双人 12×12 格点回放器</h1>
+    <p>同一 tick 的两条指令同时裁决；Worker 持有重放结果，播放、单步、跳转与导出共用同一份结果。</p>
+  </header>
+
+  <main>
+    <section>
+      <div class="panel">
+        <h2>棋盘与逐 tick 状态</h2>
+        <div class="scoreboard">
+          <div class="score a">
+            <span>角色 A 分数</span>
+            <strong id="scoreA">0</strong>
+          </div>
+          <div class="score b">
+            <span>角色 B 分数</span>
+            <strong id="scoreB">0</strong>
+          </div>
+        </div>
+
+        <div class="board-wrap">
+          <div id="board" class="board" aria-label="12乘12格点棋盘"></div>
+          <div class="legend">
+            <div class="legend-row"><span class="dot a"></span>角色 A</div>
+            <div class="legend-row"><span class="dot b"></span>角色 B</div>
+            <div class="legend-row"><span class="dot pickup"></span>一次性拾取物</div>
+          </div>
+        </div>
+
+        <div class="state-box">
+          <div>
+            <div class="state-label">当前帧 tick</div>
+            <div id="stateTick" class="mono">0 / 0</div>
+          </div>
+          <div>
+            <div class="state-label">最近检查点</div>
+            <div id="stateCheckpoint" class="mono">0</div>
+          </div>
+          <div>
+            <div class="state-label">A 位置 / 移动</div>
+            <div id="stateA" class="mono">(1,1)</div>
+          </div>
+          <div>
+            <div class="state-label">B 位置 / 移动</div>
+            <div id="stateB" class="mono">(10,10)</div>
+          </div>
+          <div class="wide">
+            <div class="state-label">固定裁决事件</div>
+            <ul id="stateEvents" class="events mono"></ul>
+          </div>
+        </div>
+
+        <div class="transport">
+          <div class="timeline-row">
+            <span id="tickLabel" class="mono">0</span>
+            <input id="timeline" type="range" min="0" max="0" value="0">
+            <span id="tickMax" class="mono">0</span>
+          </div>
+          <div class="buttons">
+            <button id="firstButton" type="button">⏮ 起点</button>
+            <button id="prevButton" type="button">◀ 上一步</button>
+            <button id="playButton" class="primary" type="button">▶ 播放</button>
+            <button id="nextButton" type="button">下一步 ▶</button>
+            <button id="lastButton" type="button">终点 ⏭</button>
+            <button id="exportButton" type="button">导出重放 JSON</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <aside>
+      <div class="panel">
+        <h2>指令日志（最多 300 tick）</h2>
+        <textarea id="logInput" spellcheck="false"></textarea>
+        <div class="editor-actions">
+          <button id="loadButton" class="primary" type="button">完整载入并重放</button>
+          <button id="mergeButton" type="button">追补/改动（从检查点重放）</button>
+          <button id="appendButton" type="button">所选按批次追加；无选择则完整载入</button>
+          <button id="sampleButton" type="button">载入示例</button>
+        </div>
+
+        <div class="form-grid">
+          <label class="field">目标 tick
+            <input id="editTick" type="number" min="0" max="299" value="0">
+          </label>
+          <label class="field">A
+            <select id="commandA">
+              <option value="stay">stay</option>
+              <option value="up">up</option>
+              <option value="down" selected>down</option>
+              <option value="left">left</option>
+              <option value="right">right</option>
+            </select>
+          </label>
+          <label class="field">B
+            <select id="commandB">
+              <option value="stay">stay</option>
+              <option value="up" selected>up</option>
+              <option value="down">down</option>
+              <option value="left">left</option>
+              <option value="right">right</option>
+            </select>
+          </label>
+          <button id="submitTickButton" type="button">提交单 tick</button>
+        </div>
+
+        <p class="explain">
+          文本格式：<code>tick A指令 B指令</code>；省略 tick 时按上一条顺延。
+          支持 <code>up/down/left/right/stay</code>、中文和 WASM 单字母。也可粘贴
+          <code>[["right","left"], ...]</code> 或对象形式。空 tick 自动视为双方停留。
+        </p>
+        <div id="status" class="status-line mono">Worker 初始化中……</div>
+      </div>
+
+      <div class="panel">
+        <h2>裁决与检查点规则</h2>
+        <p class="explain">
+          撞墙者的意图坐标回退到原位；若双方进入同格则产生 <code>COLLISION_SAME_CELL</code>，
+          若互相穿过则产生 <code>SWAP_POSITIONS</code>，两种情况本 tick 均不移动、不吃道具。
+          所有判断由同一 tick 的两条指令一次性计算。
+        </p>
+        <p class="explain">
+          第 0 tick 保存初始检查点，之后每 10 tick 保存。追补或修改过去指令时，Worker 使用
+          <code>floor(变更 tick / 10) * 10</code> 处最近且不受影响的检查点重新生成之后全部摘要。
+        </p>
+      </div>
+    </aside>
+  </main>
+
+  <script src="./replay-core.js"></script>
+  <script>
+    (() => {
+      'use strict';
+
+      const core = window.ReplayCore;
+      const sampleLog = [
+        '0 down up',
+        '1 down up',
+        '2 down up',
+        '3 down up',
+        '4 right stay',
+        '5 right stay',
+        '6 right stay',
+        '7 right stay',
+        '8 stay down',
+        '9 stay down',
+        '10 stay down',
+        '11 stay left',
+        '12 stay left',
+        '13 stay left',
+        '14 stay left',
+        '15 down right',
+        '16 left right'
+      ].join('\n');
+
+      const elements = {};
+      [
+        'board', 'scoreA', 'scoreB', 'stateTick', 'stateCheckpoint', 'stateA', 'stateB',
+        'stateEvents', 'timeline', 'tickLabel', 'tickMax', 'firstButton', 'prevButton',
+        'playButton', 'nextButton', 'lastButton', 'exportButton', 'logInput', 'loadButton',
+        'mergeButton', 'appendButton', 'sampleButton', 'editTick', 'commandA', 'commandB',
+        'submitTickButton', 'status'
+      ].forEach((id) => { elements[id] = document.getElementById(id); });
+
+      function createReplayWorker() {
+        // The engine source is embedded in a Blob so no network server is
+        // required and the replay computation stays in a Worker.
+        const workerSource = `
+          const createReplayCore = ${createReplayCore.toString()};
+          const replayCore = createReplayCore();
+          (() => {
+            let runner = replayCore.createIncrementalReplay(replayCore.DEFAULT_SCENARIO);
+
+            self.onmessage = (event) => {
+              const message = event.data || {};
+              const respondTo = message.generation;
+              try {
+                if (message.type === 'reset') {
+                  runner = replayCore.createIncrementalReplay(replayCore.DEFAULT_SCENARIO);
+                }
+
+                let info;
+                if (message.type === 'replace') {
+                  info = runner.replaceText(message.input);
+                } else if (message.type === 'merge') {
+                  info = runner.mergeText(message.input);
+                } else if (message.type === 'append') {
+                  info = runner.appendText(message.input);
+                } else if (message.type === 'init' || message.type === 'reset') {
+                  info = { changed: true, mode: 'init', minChangedTick: 0, checkpointTick: 0 };
+                } else {
+                  throw new Error('unknown worker message');
+                }
+
+                const result = runner.getReplay();
+                self.postMessage({
+                  type: 'replay',
+                  generation: respondTo,
+                  result,
+                  info
+                });
+              } catch (error) {
+                self.postMessage({
+                  type: 'error',
+                  generation: respondTo,
+                  error: { name: error.name, message: error.message }
+                });
+              }
+            };
+          })();
+        `;
+        const blob = new Blob([workerSource], { type: 'text/javascript' });
+        return new Worker(URL.createObjectURL(blob));
+      }
+
+      const worker = createReplayWorker();
+      let generation = 1;
+      let activeReplay = null;
+      let currentTick = 0;
+      let playing = false;
+      let playHandle = null;
+      let debounceHandle = null;
+
+      function setStatus(html, tone = 'muted') {
+        elements.status.className = `status-line mono ${tone}`;
+        elements.status.innerHTML = html;
+      }
+
+      function escapeHtml(value) {
+        return String(value).replace(/[&<>"']/g, (char) => ({
+          '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+        })[char]);
+      }
+
+      function positionText(position) {
+        return `(${position.x},${position.y})`;
+      }
+
+      function commandText(pair, who) {
+        const value = pair ? pair[who] : '—';
+        const labels = { up: '上', down: '下', left: '左', right: '右', stay: '停' };
+        return `${value} ${labels[value] || ''}`.trim();
+      }
+
+      function describeEvent(event) {
+        return {
+          WALL_A: 'A 撞墙，本 tick 停在原地',
+          WALL_B: 'B 撞墙，本 tick 停在原地',
+          COLLISION_SAME_CELL: '同格相遇：双方均停留，不吃道具',
+          SWAP_POSITIONS: '互换位置：交换被阻止，双方均停留',
+          PICKUP_A_P1: 'A 拾取 P1',
+          PICKUP_B_P1: 'B 拾取 P1'
+        }[event] || event;
+      }
+
+      function requestReplay(type, input) {
+        generation += 1;
+        const thisGeneration = generation;
+        const modeLabels = { replace: '完整重放', merge: '检查点重放', append: '批量追加重放' };
+        setStatus(`第 ${thisGeneration} 代重放计算中……（${modeLabels[type] || type}）`);
+        worker.postMessage({ type, generation: thisGeneration, input });
+      }
+
+      function ensureTickInRange() {
+        const max = activeReplay ? activeReplay.frames.length - 1 : 0;
+        if (currentTick < 0) currentTick = 0;
+        if (currentTick > max) {
+          currentTick = max;
+          stopPlayback();
+        }
+      }
+
+      function renderBoard() {
+        const scenario = activeReplay.scenario;
+        const frame = activeReplay.frames[currentTick];
+        const cellElements = [];
+        for (let y = 0; y < 12; y += 1) {
+          for (let x = 0; x < 12; x += 1) {
+            cellElements.push(`<div class="cell" data-x="${x}" data-y="${y}"><span class="coordinate">${x},${y}</span></div>`);
+          }
+        }
+        elements.board.innerHTML = cellElements.join('');
+
+        const cells = [...elements.board.querySelectorAll('.cell')];
+        const indexOf = (x, y) => y * 12 + x;
+        const collectedIds = new Set(frame.collectedById ? Object.keys(frame.collectedById) : frame.collected);
+
+        for (const pickup of scenario.pickups) {
+          if (collectedIds.has(pickup.id)) continue;
+          const cell = cells[indexOf(pickup.x, pickup.y)];
+          const marker = document.createElement('span');
+          marker.className = 'pickup-marker';
+          marker.title = `${pickup.id} (${pickup.x},${pickup.y}) +${pickup.points}`;
+          marker.innerHTML = `<span class="pickup-points">${pickup.points}</span>`;
+          cell.appendChild(marker);
+        }
+
+        function addIntention(who) {
+          if (!frame.intended || !frame.intended[who]) return;
+          const intended = frame.intended[who];
+          const position = frame.positions[who];
+          if (intended.x === position.x && intended.y === position.y) return;
+          const marker = document.createElement('span');
+          marker.className = `intention ${who}`;
+          marker.title = `${who.toUpperCase()} 的意图坐标 (${intended.x},${intended.y})`;
+          cells[indexOf(intended.x, intended.y)].appendChild(marker);
+        }
+
+        addIntention('a');
+        addIntention('b');
+
+        for (const who of ['a', 'b']) {
+          const position = frame.positions[who];
+          const actor = document.createElement('span');
+          actor.className = `actor ${who}`;
+          actor.textContent = who.toUpperCase();
+          cells[indexOf(position.x, position.y)].appendChild(actor);
+        }
+      }
+
+      function render() {
+        if (!activeReplay) return;
+        ensureTickInRange();
+        const frame = activeReplay.frames[currentTick];
+        const max = activeReplay.frames.length - 1;
+
+        elements.scoreA.textContent = frame.scores.a;
+        elements.scoreB.textContent = frame.scores.b;
+        elements.stateTick.textContent = `${frame.tick} / ${max}`;
+        elements.timeline.max = max;
+        elements.timeline.value = currentTick;
+        elements.tickLabel.textContent = currentTick;
+        elements.tickMax.textContent = max;
+
+        const checkpointTick = Math.floor(currentTick / core.CHECKPOINT_INTERVAL) * core.CHECKPOINT_INTERVAL;
+        elements.stateCheckpoint.textContent = String(checkpointTick);
+
+        const aMoved = frame.moved ? (frame.moved.a ? '移动' : '未移动') : '初始';
+        const bMoved = frame.moved ? (frame.moved.b ? '移动' : '未移动') : '初始';
+        elements.stateA.textContent = `${positionText(frame.positions.a)} / ${commandText(frame.commands, 'a')} / ${aMoved}`;
+        elements.stateB.textContent = `${positionText(frame.positions.b)} / ${commandText(frame.commands, 'b')} / ${bMoved}`;
+
+        elements.stateEvents.innerHTML = frame.events.length
+          ? frame.events.map((event) => `<li>${escapeHtml(describeEvent(event))}</li>`).join('')
+          : '<li class="muted">无碰撞或拾取事件</li>';
+
+        elements.firstButton.disabled = currentTick === 0;
+        elements.prevButton.disabled = currentTick === 0;
+        elements.nextButton.disabled = currentTick === max;
+        elements.lastButton.disabled = currentTick === max;
+        elements.exportButton.disabled = false;
+        elements.playButton.textContent = playing ? '⏸ 暂停' : '▶ 播放';
+        renderBoard();
+      }
+
+      function setTick(tick) {
+        if (!activeReplay) return;
+        currentTick = Math.max(0, Math.min(tick, activeReplay.frames.length - 1));
+        render();
+      }
+
+      function stopPlayback() {
+        playing = false;
+        if (playHandle) clearInterval(playHandle);
+        playHandle = null;
+      }
+
+      function togglePlayback() {
+        if (!activeReplay) return;
+        if (playing) {
+          stopPlayback();
+          render();
+          return;
+        }
+        if (currentTick === activeReplay.frames.length - 1) currentTick = 0;
+        playing = true;
+        playHandle = setInterval(() => {
+          if (!activeReplay || !playing) return;
+          if (currentTick >= activeReplay.frames.length - 1) {
+            stopPlayback();
+            render();
+            return;
+          }
+          currentTick += 1;
+          render();
+        }, 350);
+        render();
+      }
+
+      function selectedOrAllText() {
+        const start = elements.logInput.selectionStart;
+        const end = elements.logInput.selectionEnd;
+        const selected = elements.logInput.value.slice(start, end).trim();
+        return { text: selected || elements.logInput.value, hasSelection: Boolean(selected) };
+      }
+
+      function appendTickLine(line) {
+        const current = elements.logInput.value.replace(/\s*$/, '');
+        elements.logInput.value = `${current}${current ? '\n' : ''}${line}`;
+      }
+
+      function scheduleMergeFromEditor() {
+        clearTimeout(debounceHandle);
+        debounceHandle = setTimeout(() => {
+          requestReplay('merge', elements.logInput.value);
+        }, 120);
+      }
+
+      function exportReplay() {
+        if (!activeReplay) return;
+        const payload = {
+          exportedAt: new Date(0).toISOString(),
+          replay: activeReplay,
+          currentTick
+        };
+        const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.download = `replay-12x12-tick-${String(currentTick).padStart(3, '0')}.json`;
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      }
+
+      worker.onmessage = (event) => {
+        const message = event.data || {};
+        if (!message.generation || message.generation !== generation) {
+          // Stale generations are discarded before touching any UI/replay state.
+          console.info(`忽略第 ${message.generation} 代旧结果；当前为第 ${generation} 代。`);
+          return;
+        }
+
+        if (message.type === 'error') {
+          stopPlayback();
+          setStatus(`第 ${generation} 代重放失败：${escapeHtml(message.error.message)}`, 'warn');
+          return;
+        }
+
+        activeReplay = message.result;
+        ensureTickInRange();
+        const info = message.info || {};
+        const modeLabel = {
+          init: '初始结果',
+          full: '完整重放',
+          checkpoint: '检查点重放',
+          none: '无变化'
+        }[info.mode] || info.mode;
+        const checkpointText = info.checkpointTick == null ? '—' : info.checkpointTick;
+        setStatus(
+          `第 ${generation} 代结果已生效：${modeLabel}；最早变更 tick=${info.minChangedTick ?? '—'}；` +
+          `使用检查点 tick=${checkpointText}；摘要帧数=${activeReplay.frames.length}；检查点=${activeReplay.checkpointTicks.join(', ')}`,
+          'ok'
+        );
+        render();
+      };
+
+      elements.timeline.addEventListener('input', () => {
+        stopPlayback();
+        setTick(Number(elements.timeline.value));
+      });
+      elements.firstButton.addEventListener('click', () => { stopPlayback(); setTick(0); });
+      elements.prevButton.addEventListener('click', () => { stopPlayback(); setTick(currentTick - 1); });
+      elements.nextButton.addEventListener('click', () => { stopPlayback(); setTick(currentTick + 1); });
+      elements.lastButton.addEventListener('click', () => {
+        stopPlayback();
+        setTick(activeReplay.frames.length - 1);
+      });
+      elements.playButton.addEventListener('click', togglePlayback);
+      elements.exportButton.addEventListener('click', exportReplay);
+
+      elements.loadButton.addEventListener('click', () => {
+        stopPlayback();
+        requestReplay('replace', elements.logInput.value);
+      });
+      elements.mergeButton.addEventListener('click', () => {
+        stopPlayback();
+        requestReplay('merge', selectedOrAllText().text);
+      });
+      elements.appendButton.addEventListener('click', () => {
+        stopPlayback();
+        const selection = selectedOrAllText();
+        requestReplay(selection.hasSelection ? 'append' : 'replace', selection.text);
+      });
+      elements.sampleButton.addEventListener('click', () => {
+        stopPlayback();
+        elements.logInput.value = sampleLog;
+        currentTick = 0;
+        requestReplay('replace', sampleLog);
+      });
+      elements.logInput.addEventListener('input', scheduleMergeFromEditor);
+
+      elements.submitTickButton.addEventListener('click', () => {
+        const tick = Number(elements.editTick.value);
+        if (!Number.isInteger(tick) || tick < 0 || tick >= core.MAX_TICKS) {
+          setStatus(`tick 必须在 0 到 ${core.MAX_TICKS - 1} 之间`, 'warn');
+          return;
+        }
+        const line = `${tick} ${elements.commandA.value} ${elements.commandB.value}`;
+        appendTickLine(line);
+        stopPlayback();
+        requestReplay('merge', line);
+      });
+
+      window.addEventListener('beforeunload', () => {
+        stopPlayback();
+        worker.terminate();
+      });
+
+      elements.logInput.value = sampleLog;
+      elements.status.textContent = '正在请求初始 Worker 重放……';
+      worker.postMessage({ type: 'init', generation, input: '' });
+    })();
+  </script>
+</body>
+</html>

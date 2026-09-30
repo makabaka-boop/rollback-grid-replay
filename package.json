@@ -1,0 +1,12 @@
+{
+  "name": "local-12x12-two-player-replayer",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Fully local deterministic two-player 12x12 grid replay viewer",
+  "scripts": {
+    "test": "node --test replay-core.test.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
